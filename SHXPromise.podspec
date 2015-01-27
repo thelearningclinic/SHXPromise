@@ -5,7 +5,7 @@ Pod::Spec.new do |s|
   s.summary  = 'A lightweight implementation of Promises/A+ for iOS and OS X.'
   s.homepage = 'https://github.com/MSNexploder/SHXPromise'
   s.authors  = { 'Stefan Huber' => 'MSNexploder@gmail.com' }
-  s.source   = { :git => 'https://github.com/MSNexploder/SHXPromise.git', :tag => '0.4.0' }
+  s.source   = { :git => 'https://github.com/MSNexploder/SHXPromise.git' }
   s.source_files = 'SHXPromise'
   s.requires_arc = true
 
