@@ -1,6 +1,6 @@
 //
 //  SHXPromise.m
-//  
+//
 // Copyright (c) 2013 Stefan Huber
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -33,20 +33,16 @@ typedef NS_ENUM(NSInteger, SHXPromiseState) {
 
 @property (nonatomic, strong, readonly) SHXPromise *promise;
 @property (nonatomic, strong, readonly) id callback;
-@property (nonatomic, readonly) dispatch_queue_t queue;
-
-- (instancetype)initWithPromise:(SHXPromise *)promise callback:(id)callback queue:(dispatch_queue_t)queue;
 
 @end
 
 @implementation SHXPromiseCallback
 
-- (instancetype)initWithPromise:(SHXPromise *)promise callback:(id)callback queue:(dispatch_queue_t)queue {
+- (instancetype)initWithPromise:(SHXPromise *)promise callback:(id)callback {
     self = [self init];
     if (self != nil) {
         _promise = promise;
         _callback = callback;
-        _queue = queue;
     }
     
     return self;
@@ -62,9 +58,6 @@ typedef NS_ENUM(NSInteger, SHXPromiseState) {
 @property (nonatomic, strong, readwrite) NSMutableArray *onFulfilledCallbacks;
 @property (nonatomic, strong, readwrite) NSMutableArray *onRejectedCallbacks;
 @property (nonatomic, readwrite) SHXPromiseState state;
-
-- (void)callFulfillmentBlock:(FulfillmentBlock)callback promise:(SHXPromise *)promise value:(id)value queue:(dispatch_queue_t)queue;
-- (void)callRejectionBlock:(RejectionBlock)callback promise:(SHXPromise *)promise reason:(NSError *)reason queue:(dispatch_queue_t)queue;
 
 @end
 
@@ -136,15 +129,22 @@ static inline NSString *stringFromPromiseState(SHXPromiseState state) {
                 
                 return value;
             }
+            
+            resolvedCount += 1;
+            [resultValue insertObject:value atIndex:counter];
+            
+            if (resolvedCount == count) {
+                [finalPromise fulfill:resultValue];
+            }
+            
+            return value;
         } rejected:^id(NSError *reason) {
-            @synchronized(finalPromise) {
-                if ([finalPromise isFulfilled] || [finalPromise isRejected]) {
-                    return reason;
-                }
-                
-                [finalPromise reject:reason];
+            if ([finalPromise isFulfilled] || [finalPromise isRejected]) {
                 return reason;
             }
+            
+            [finalPromise reject:reason];
+            return reason;
         }];
         
         counter += 1;
@@ -164,29 +164,26 @@ static inline NSString *stringFromPromiseState(SHXPromiseState state) {
     for (id<NSCopying>key in promises) {
         SHXPromise *promise = [promises objectForKey:key];
         [promise onFulfilled:^id(id value) {
-            @synchronized(finalPromise) {
-                if ([finalPromise isFulfilled] || [finalPromise isRejected]) {
-                    return value;
-                }
-                
-                resolvedCount += 1;
-                [resultValue setObject:value forKey:key];
-                
-                if (resolvedCount == count) {
-                    [finalPromise fulfill:resultValue];
-                }
-                
+            if ([finalPromise isFulfilled] || [finalPromise isRejected]) {
                 return value;
             }
+            
+            resolvedCount += 1;
+            [resultValue setObject:value forKey:key];
+            
+            if (resolvedCount == count) {
+                [finalPromise fulfill:resultValue];
+            }
+            
+            return value;
+            
         } rejected:^id(NSError *reason) {
-            @synchronized(finalPromise) {
-                if ([finalPromise isFulfilled] || [finalPromise isRejected]) {
-                    return reason;
-                }
-                
-                [finalPromise reject:reason];
+            if ([finalPromise isFulfilled] || [finalPromise isRejected]) {
                 return reason;
             }
+            
+            [finalPromise reject:reason];
+            return reason;
         }];
         
         counter += 1;
@@ -200,46 +197,30 @@ static inline NSString *stringFromPromiseState(SHXPromiseState state) {
 }
 
 - (instancetype)onFulfilled:(FulfillmentBlock)onFulfilled rejected:(RejectionBlock)onRejected {
-    return [self onFulfilled:onFulfilled rejected:onRejected queue:dispatch_get_current_queue()];
-}
-
-- (instancetype)onFulfilled:(FulfillmentBlock)onFulfilled {
-    return [self onFulfilled:onFulfilled queue:dispatch_get_current_queue()];
-}
-
-- (instancetype)onRejected:(RejectionBlock)onRejected {
-    return [self onRejected:onRejected queue:dispatch_get_current_queue()];
-}
-
-- (instancetype)onFulfilled:(FulfillmentBlock)onFulfilled rejected:(RejectionBlock)onRejected queue:(dispatch_queue_t)queue {
     onFulfilled = [onFulfilled copy];
     onRejected = [onRejected copy];
     
-    SHXPromise *promise = [[[self class] alloc] init];
-    for (NSString *key in [[self class] additionalPropertyKeys]) {
-        id value = [self valueForKey:key];
-        [promise setValue:value forKey:key];
-    }
+    SHXPromise *promise = [self clone];
     
-    [[self onFulfilledCallbacks] addObject:[[SHXPromiseCallback alloc] initWithPromise:promise callback:onFulfilled queue:queue]];
-    [[self onRejectedCallbacks] addObject:[[SHXPromiseCallback alloc] initWithPromise:promise callback:onRejected queue:queue]];
+    [[self onFulfilledCallbacks] addObject:[[SHXPromiseCallback alloc] initWithPromise:promise callback:onFulfilled]];
+    [[self onRejectedCallbacks] addObject:[[SHXPromiseCallback alloc] initWithPromise:promise callback:onRejected]];
     
     if ([self isFulfilled]) {
-        [self callFulfillmentBlock:onFulfilled promise:promise value:[self value] queue:queue];
+        [self callFulfillmentBlock:onFulfilled promise:promise value:[self value]];
     }
     if ([self isRejected]) {
-        [self callRejectionBlock:onRejected promise:promise reason:[self reason] queue:queue];
+        [self callRejectionBlock:onRejected promise:promise reason:[self reason]];
     }
     
     return promise;
 }
 
-- (instancetype)onFulfilled:(FulfillmentBlock)onFulfilled queue:(dispatch_queue_t)queue {
-    return [self onFulfilled:onFulfilled rejected:nil queue:queue];
+- (instancetype)onFulfilled:(FulfillmentBlock)onFulfilled {
+    return [self onFulfilled:onFulfilled rejected:nil];
 }
 
-- (instancetype)onRejected:(RejectionBlock)onRejected queue:(dispatch_queue_t)queue {
-    return [self onFulfilled:nil rejected:onRejected queue:queue];
+- (instancetype)onRejected:(RejectionBlock)onRejected {
+    return [self onFulfilled:nil rejected:onRejected];
 }
 
 #pragma mark - Properties
@@ -257,41 +238,33 @@ static inline NSString *stringFromPromiseState(SHXPromiseState state) {
 }
 
 - (void)fulfill:(id)value {
-    @synchronized(self) {
-        if ([self state] != SHXPromiseStatePending) {
-            return;
-        }
-        [self setState:SHXPromiseStateFulfilled];
-        [self setValue:value];
-
-        for (SHXPromiseCallback *callbackHandler in [self onFulfilledCallbacks]) {
-            [self callFulfillmentBlock:[callbackHandler callback] promise:[callbackHandler promise] value:value queue:[callbackHandler queue]];
-        }
-        
-        [self setOnFulfilledCallbacks:nil];
-        [self setOnRejectedCallbacks:nil];
+    if ([self state] != SHXPromiseStatePending) {
+        return;
     }
-}
-
-- (void)resolve:(id)value {
-    [self fulfill:value];
+    [self setState:SHXPromiseStateFulfilled];
+    [self setValue:value];
+    
+    for (SHXPromiseCallback *callbackHandler in [self onFulfilledCallbacks]) {
+        [self callFulfillmentBlock:[callbackHandler callback] promise:[callbackHandler promise] value:value];
+    }
+    
+    [self setOnFulfilledCallbacks:nil];
+    [self setOnRejectedCallbacks:nil];
 }
 
 - (void)reject:(NSError *)reason {
-    @synchronized(self) {
-        if ([self state] != SHXPromiseStatePending) {
-            return;
-        }
-        [self setReason:reason];
-        [self setState:SHXPromiseStateRejected];
-
-        for (SHXPromiseCallback *callbackHandler in [self onRejectedCallbacks]) {
-            [self callRejectionBlock:[callbackHandler callback] promise:[callbackHandler promise] reason:reason queue:[callbackHandler queue]];
-        }
-        
-        [self setOnFulfilledCallbacks:nil];
-        [self setOnRejectedCallbacks:nil];
+    if ([self state] != SHXPromiseStatePending) {
+        return;
     }
+    [self setReason:reason];
+    [self setState:SHXPromiseStateRejected];
+    
+    for (SHXPromiseCallback *callbackHandler in [self onRejectedCallbacks]) {
+        [self callRejectionBlock:[callbackHandler callback] promise:[callbackHandler promise] reason:reason];
+    }
+    
+    [self setOnFulfilledCallbacks:nil];
+    [self setOnRejectedCallbacks:nil];
 }
 
 - (NSString *)description {
@@ -312,24 +285,35 @@ static inline NSString *stringFromPromiseState(SHXPromiseState state) {
 
 #pragma mark - Internal
 
-- (void)callFulfillmentBlock:(FulfillmentBlock)callback promise:(SHXPromise *)promise value:(id)value queue:(dispatch_queue_t)queue {
-    dispatch_async(queue, ^{
-        id callbackValue = value;
-        if (callback != nil) {
-            callbackValue = callback(value);
-        }
-        handlePromiseWithValue(promise, callbackValue);
-    });
+- (void)callFulfillmentBlock:(FulfillmentBlock)callback promise:(SHXPromise *)promise value:(id)value {
+    id callbackValue = value;
+    if (callback != nil) {
+        callbackValue = callback(value);
+    }
+    handlePromiseWithValue(promise, callbackValue);
 }
 
-- (void)callRejectionBlock:(RejectionBlock)callback promise:(SHXPromise *)promise reason:(NSError *)reason queue:(dispatch_queue_t)queue {
-    dispatch_async(queue, ^{
-        id callbackValue = reason;
-        if (callback != nil) {
-            callbackValue = callback(reason);
-        }
-        handlePromiseWithValue(promise, callbackValue);
-    });
+- (void)callRejectionBlock:(RejectionBlock)callback promise:(SHXPromise *)promise reason:(NSError *)reason {
+    id callbackValue = reason;
+    if (callback != nil) {
+        callbackValue = callback(reason);
+    }
+    handlePromiseWithValue(promise, callbackValue);
+}
+
+/**
+ * Creates a new promise from the existing promise. The new promise will be in state #pending.
+ *
+ */
+- (instancetype)clone
+{
+    SHXPromise *clonedPromise = [[[self class] alloc] init];
+    for (NSString *key in [[self class] additionalPropertyKeys]) {
+        id value = [self valueForKey:key];
+        [clonedPromise setValue:value forKey:key];
+    }
+    
+    return clonedPromise;
 }
 
 @end

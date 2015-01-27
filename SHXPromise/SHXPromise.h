@@ -68,7 +68,7 @@ typedef id(^RejectionBlock)(NSError *reason);
 /**
  * Return a new promise that will be fulfilled when all of the promises in the array have been fulfilled;
  * or rejected immediately if any promise in the array is rejected.
- * 
+ *
  * @param promises Array of input promises.
  * @return A new promise that will be fulfilled when all of the promises in the array have been fulfilled.
  */
@@ -125,41 +125,6 @@ typedef id(^RejectionBlock)(NSError *reason);
 - (instancetype)onRejected:(RejectionBlock)onRejected;
 
 /**
- * Registers both, an fulfillment and rejection block.
- *
- * @note Can be called multiple times. Registered actions will be resolved in order.
- * @param onFulfilled A block which will be called if the promise was successfully fulfilled.
- * The returned value from the block will be used to resolve returned promise.
- * @param onRejected A block which will be called if the promise was rejected.
- * The returned value from the block will be used to resolve the returned promise.
- * @param queue A queue on which the onFulfilled / on Rejected block will be called.
- * @return A new promise.
- */
-- (instancetype)onFulfilled:(FulfillmentBlock)onFulfilled rejected:(RejectionBlock)onRejected queue:(dispatch_queue_t)queue;
-
-/**
- * Registers an fulfillment block.
- *
- * @note Can be called multiple times. Registered actions will be resolved in order.
- * @param onFulfilled A block which will be called if the promise was successfully fulfilled.
- * The returned value from the block will be used to resolve returned promise.
- * @param queue A queue on which the onFulfilled / on Rejected block will be called.
- * @return A new promise.
- */
-- (instancetype)onFulfilled:(FulfillmentBlock)onFulfilled queue:(dispatch_queue_t)queue;
-
-/**
- * Registers an rejection block.
- *
- * @note Can be called multiple times. Registered actions will be resolved in order.
- * @param onRejected A block which will be called if the promise was rejected.
- * The returned value from the block will be used to resolve the returned promise.
- * @param queue A queue on which the onFulfilled / on Rejected block will be called.
- * @return A new promise.
- */
-- (instancetype)onRejected:(RejectionBlock)onRejected queue:(dispatch_queue_t)queue;
-
-/**
  * Fulfill the promise with the passed result.
  *
  * In order to successfully keep the promise, the promise must be pending.
@@ -167,10 +132,9 @@ typedef id(^RejectionBlock)(NSError *reason);
  * @param value The successful value that should become the promise's result.
  */
 - (void)fulfill:(id)value;
-- (void)resolve:(id)value;
 
 /**
- * Rejectes the promise with the passed reason.
+ * Rejects the promise with the passed reason.
  *
  * In order to successfully reject the promise, the promise must be pending.
  *
