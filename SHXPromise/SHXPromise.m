@@ -259,7 +259,8 @@ static inline NSString *stringFromPromiseState(SHXPromiseState state) {
     [self setReason:reason];
     [self setState:SHXPromiseStateRejected];
     
-    for (SHXPromiseCallback *callbackHandler in [self onRejectedCallbacks]) {
+    NSArray *rejectedCallbacks = [[self onRejectedCallbacks] copy];
+    for (SHXPromiseCallback *callbackHandler in rejectedCallbacks) {
         [self callRejectionBlock:[callbackHandler callback] promise:[callbackHandler promise] reason:reason];
     }
     
